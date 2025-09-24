@@ -33,9 +33,13 @@ public class Product extends Timestamped {
     private int myprice;
 
     public Product(ProductRequestDto requestDto) {
-        this.title = requestDto.getTitle();
-        this.image = requestDto.getImage();
-        this.link = requestDto.getLink();
-        this.lprice = requestDto.getLprice();
+        title = requestDto.getTitle();
+        image = requestDto.getImage();
+        link = requestDto.getLink();
+        lprice = requestDto.getLprice();
+    }
+
+    public void updateMyPrice(int price) {
+        myprice = price;
     }
 }
