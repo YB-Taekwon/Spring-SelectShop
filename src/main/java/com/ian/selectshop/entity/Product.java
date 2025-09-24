@@ -1,6 +1,7 @@
 package com.ian.selectshop.entity;
 
 import com.ian.selectshop.dto.ProductRequestDto;
+import com.ian.selectshop.naver.dto.ItemDto;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -41,5 +42,9 @@ public class Product extends Timestamped {
 
     public void updateMyPrice(int price) {
         myprice = price;
+    }
+
+    public void updateByItemDto(ItemDto itemDto) {
+        myprice = itemDto.getLprice();
     }
 }

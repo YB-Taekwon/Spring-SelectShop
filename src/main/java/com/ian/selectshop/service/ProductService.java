@@ -1,16 +1,16 @@
 package com.ian.selectshop.service;
 
+import com.ian.selectshop.dto.MyPriceRequestDto;
 import com.ian.selectshop.dto.ProductRequestDto;
 import com.ian.selectshop.dto.ProductResponseDto;
-import com.ian.selectshop.dto.MyPriceRequestDto;
 import com.ian.selectshop.entity.Product;
+import com.ian.selectshop.naver.dto.ItemDto;
 import com.ian.selectshop.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -43,9 +43,18 @@ public class ProductService {
         return new ProductResponseDto(product);
     }
 
+    @Transactional
     public List<ProductResponseDto> getProducts() {
         return productRepository.findAll().stream()
                 .map(ProductResponseDto::new)
                 .toList();
+    }
+
+
+    public void updateBySearch(Long id, ItemDto itemDto) {
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new NullPointerException("해당 상품은 존재하지 않습니다."));
+
+        product.updateByItemDto(itemDto);
     }
 }
