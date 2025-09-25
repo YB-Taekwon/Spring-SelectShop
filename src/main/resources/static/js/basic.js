@@ -2,8 +2,42 @@ const host = 'http://' + window.location.host;
 let targetId;
 
 $(document).ready(function () {
+    const auth = getToken();
 
-    showProduct();
+    if (auth !== undefined && auth !== '') {
+        $.ajaxPrefilter(function (options, originalOptions, jqXHR) {
+            jqXHR.setRequestHeader('Authorization', 'Bearer ' + auth);
+        });
+    } else {
+        window.location.href = host + '/api/user/login-page';
+        return;
+    }
+
+    $.ajax({
+        type: 'GET',
+        url: `/api/user-info`,
+        contentType: 'application/json',
+    })
+        .done(function (res, status, xhr) {
+            const username = res.username;
+            const isAdmin = !!res.admin;
+
+            if (!username) {
+                window.location.href = '/api/user/login-page';
+                return;
+            }
+
+            $('#username').text(username);
+            if (isAdmin) {
+                $('#admin').text(true);
+                showProduct(true);
+            } else {
+                showProduct();
+            }
+        })
+        .fail(function (jqXHR, textStatus) {
+            logout();
+        });
 
     // id 가 query 인 요소 위에서 엔터를 누르면 execSearch() 함수를 실행
     $('#query').on('keypress', function (e) {
@@ -11,7 +45,6 @@ $(document).ready(function () {
             execSearch();
         }
     });
-
     $('#close').on('click', function () {
         $('#container').removeClass('active');
     })
@@ -32,6 +65,7 @@ $(document).ready(function () {
         $('#see-area').hide();
         $('#search-area').show();
     })
+
     $('#see-area').show();
     $('#search-area').hide();
 })
@@ -47,10 +81,10 @@ function execSearch() {
      * 검색결과 HTML 만드는 함수: addHTML
      */
 
-    // 1. 검색창의 입력값을 가져옴
+        // 1. 검색창의 입력값을 가져옴
     let query = $('#query').val();
 
-    // 2. 검색창 입력값을 검사하고, 입력하지 않았을 경우 focus.
+    // 2. 검색창 입력값을 검사하고, 입력하지 않았을 경우 focus
     if (query == '') {
         alert('검색어를 입력해주세요');
         $('#query').focus();
@@ -70,10 +104,9 @@ function execSearch() {
             }
         },
         error(error, status, request) {
-            console.error(error);
+            logout();
         }
     })
-
 }
 
 function addHTML(itemDto) {
@@ -82,6 +115,7 @@ function addHTML(itemDto) {
      * image, title, lprice, addProduct 활용
      * 참고) onclick='addProduct(${JSON.stringify(itemDto)})'
      */
+
     return `<div class="search-itemDto">
         <div class="search-itemDto-left">
             <img src="${itemDto.image}" alt="">
@@ -119,7 +153,7 @@ function addProduct(itemDto) {
             targetId = response.id;
         },
         error(error, status, request) {
-            console.log(error);
+            logout();
         }
     });
 }
@@ -131,9 +165,18 @@ function showProduct(isAdmin = false) {
      * 관심상품 HTML 만드는 함수: addProductItem
      */
 
+    let dataSource = null;
+
+    // admin 계정
+    if (isAdmin) {
+        dataSource = `/api/admin/products`;
+    } else {
+        dataSource = `/api/products`;
+    }
+
     $.ajax({
         type: 'GET',
-        url: '/api/products',
+        url: dataSource,
         contentType: 'application/json',
         success: function (response) {
             $('#product-container').empty();
@@ -144,10 +187,13 @@ function showProduct(isAdmin = false) {
             }
         },
         error(error, status, request) {
-            console.log(error);
+            if (error.status === 403) {
+                $('html').html(error.responseText);
+                return;
+            }
+            logout();
         }
     });
-
 }
 
 function addProductItem(product) {
@@ -186,7 +232,7 @@ function setMyprice() {
      * 6. 창 새로고침 window.location.reload();
      */
 
-    // 1. id가 myprice 인 input 태그에서 값을 가져옴
+        // 1. id가 myprice 인 input 태그에서 값을 가져옴
     let myprice = $('#myprice').val();
     // 2. 만약 값을 입력하지 않았으면 alert를 띄우고 중단
     if (myprice == '') {
@@ -210,7 +256,16 @@ function setMyprice() {
             window.location.reload();
         },
         error(error, status, request) {
-            console.error(error);
+            logout();
         }
     })
+}
+
+function logout() {
+    localStorage.removeItem('Authorization');
+    window.location.href = host + '/api/user/login-page';
+}
+
+function getToken() {
+    return localStorage.getItem('Authorization') || '';
 }
