@@ -1,15 +1,17 @@
-const host = 'http://' + window.location.host;
+const host = window.location.origin;
 let targetId;
+let folderTargetId; // 현재 선택(필터)된 폴더 ID (전체: null/undefined)
+
 
 $(document).ready(function () {
     const auth = getToken();
 
     if (auth !== undefined && auth !== '') {
         $.ajaxPrefilter(function (options, originalOptions, jqXHR) {
-            jqXHR.setRequestHeader('Authorization', 'Bearer ' + auth);
+            jqXHR.setRequestHeader('Authorization', auth);
         });
     } else {
-        window.location.href = host + '/api/user/login-page';
+        window.location.href = '/api/user/login-page';
         return;
     }
 
@@ -30,7 +32,8 @@ $(document).ready(function () {
             $('#username').text(username);
             if (isAdmin) {
                 $('#admin').text(true);
-                showProduct(); // 매개변수 제거
+                showProduct();
+                loadUserFolders();
             } else {
                 showProduct();
             }
@@ -69,6 +72,32 @@ $(document).ready(function () {
     $('#see-area').show();
     $('#search-area').hide();
 })
+
+// 폴더 버튼(개별) 클릭
+$(document).on('click', 'button.product-folder', function () {
+    const id = $(this).val();
+    openFolder(id ? Number(id) : null);
+});
+
+// 전체보기 버튼 클릭
+$(document).on('click', '#folder-all', function () {
+    openFolder(null);
+});
+
+// 폴더 추가 모달 열기 버튼(있다면)
+$(document).on('click', '#open-add-folder', function () {
+    openAddFolderPopup();
+});
+
+// 폴더 입력 칸 추가 버튼(있다면)
+$(document).on('click', '#add-folder-input', function () {
+    addFolderInput();
+});
+
+// 새 폴더 생성 버튼(있다면)
+$(document).on('click', '#submit-folders', function () {
+    addFolder();
+});
 
 function numberWithCommas(x) {
     return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -169,7 +198,10 @@ function showProduct() {
     const sorting = $("#sorting option:selected").val();
     const isAsc = $(':radio[name="isAsc"]:checked').val();
 
-    const dataSource = `/api/products?sortBy=${sorting}&isAsc=${isAsc}`;
+    // 폴더 필터링 지원: folderTargetId 가 있으면 해당 폴더의 상품, 없으면 전체
+    const dataSource = (folderTargetId !== undefined && folderTargetId !== null)
+        ? `/api/folders/${folderTargetId}/products?sortBy=${sorting}&isAsc=${isAsc}`
+        : `/api/products?sortBy=${sorting}&isAsc=${isAsc}`;
 
     $('#product-container').empty();
     $('#search-result-box').empty();
@@ -205,24 +237,33 @@ function showProduct() {
 }
 
 function addProductItem(product) {
-    console.log(product)
+    // product.productFolderList : [{id, name}] 형태를 가정
+    const folders = (product.productFolderList || []).map(folder =>
+        `<span class="product-tag" onclick="openFolder(${folder.id})">#${folder.name}</span>`
+    ).join('');
+
+    // 폴더 추가 버튼(선택 UI는 동적으로 삽입)
+    const addBtn = `
+        <span class="product-folder-add" onclick="addInputForProductToFolder(${product.id}, this)" title="폴더에 추가">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24px" fill="currentColor" class="bi bi-folder-plus" viewBox="0 0 16 16">
+                <path d="M.5 3l.04.87a1.99 1.99 0 0 0-.342 1.311l.637 7A2 2 0 0 0 2.826 14H9v-1H2.826a1 1 0 0 1-.995-.91l-.637-7A1 1 0 0 1 2.19 4h11.62a1 1 0 0 1 .996 1.09L14.54 8h1.005l.256-2.819A2 2 0 0 0 13.81 3H9.828a2 2 0 0 1-1.414-.586l-.828-.828A2 2 0 0 0 6.172 1H2.5a2 2 0 0 0-2 2zm5.672-1a1 1 0 0 1 .707.293L7.586 3H2.19c-.24 0-.47.042-.684.12L1.5 2.98a1 1 0 0 1 1-.98h3.672z"/>
+                <path d="M13.5 10a.5.5 0 0 1 .5.5V12h1.5a.5.5 0 0 1 0 1H14v1.5a.5.5 0 0 1-1 0V13h-1.5a.5.5 0 0 1 0-1H13v-1.5a.5.5 0 0 1 .5-.5z"/>
+            </svg>
+        </span>`;
+
     return `<div class="product-card">
                 <div onclick="window.location.href='${product.link}'">
                     <div class="card-header">
-                        <img src="${product.image}"
-                             alt="">
+                        <img src="${product.image}" alt="">
                     </div>
                     <div class="card-body">
-                        <div class="title">
-                            ${product.title}
-                        </div>
-                        <div class="lprice">
-                            <span>${numberWithCommas(product.lprice)}</span>원
-                        </div>
-                        <div class="isgood ${product.lprice > product.myprice ? 'none' : ''}">
-                            최저가
-                        </div>
+                        <div class="title">${product.title}</div>
+                        <div class="lprice"><span>${numberWithCommas(product.lprice)}</span>원</div>
+                        <div class="isgood ${product.lprice > product.myprice ? 'none' : ''}">최저가</div>
                     </div>
+                </div>
+                <div class="product-tags" style="margin-bottom: 20px;">
+                    ${folders}${addBtn}
                 </div>
             </div>`;
 }
@@ -276,4 +317,147 @@ function logout() {
 
 function getToken() {
     return localStorage.getItem('Authorization') || '';
+}
+
+function loadUserFolders() {
+    $.ajax({
+        type: 'GET',
+        url: `/api/user-folder`
+    })
+        .done(function (fragment, textStatus, xhr) {
+            // ✅ 로그인 HTML이 섞여 들어오면 삽입하지 않고 로그아웃
+            const ct = (xhr.getResponseHeader('Content-Type') || '').toLowerCase();
+            const isHtml = ct.includes('text/html') || typeof fragment === 'string';
+            const looksLikeLogin =
+                isHtml &&
+                typeof fragment === 'string' &&
+                (fragment.includes('/api/user/login')
+                    || fragment.toLowerCase().includes('name="username"')
+                    || fragment.toLowerCase().includes('login'));
+            if (looksLikeLogin) {
+                logout();
+                return;
+            }
+
+            $('#fragment').replaceWith(fragment);
+        })
+        .fail(function (xhr) {
+            // ✅ 인증 실패만 로그아웃, 나머지는 경고만
+            if (xhr.status === 401 || xhr.status === 403) {
+                logout();
+            } else {
+                console.warn('user-folder load failed:', xhr.status);
+            }
+        });
+}
+
+// 폴더 버튼 클릭 시: 해당 폴더로 필터 후 목록 갱신
+function openFolder(folderId) {
+    folderTargetId = (folderId === undefined ? null : folderId);
+    // 버튼 활성화 표시(버튼 DOM은 서버 프래그먼트가 제공한다고 가정)
+    $("button.product-folder").removeClass("folder-active");
+    if (!folderId) {
+        $("button#folder-all").addClass('folder-active');
+    } else {
+        $(`button.product-folder[value='${folderId}']`).addClass('folder-active');
+    }
+    showProduct(); // folderTargetId 를 읽어 데이터 소스를 결정
+}
+
+// 폴더 추가 모달 열기 (#container2 사용)
+function openAddFolderPopup() {
+    $('#container2').addClass('active');
+}
+
+// 폴더 입력창 추가
+function addFolderInput() {
+    $('#folders-input').append(
+        `<input type="text" class="folderToAdd" placeholder="추가할 폴더명">
+         <span onclick="closeFolderInput(this)" style="margin-right:5px">
+            <svg xmlns="http://www.w3.org/2000/svg" width="30px" fill="red" class="bi bi-x-circle-fill" viewBox="0 0 16 16">
+              <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM5.354 4.646a.5.5 0 1 0-.708.708L7.293 8l-2.647 2.646a.5.5 0 0 0 .708.708L8 8.707l2.646 2.647a.5.5 0 0 0 .708-.708L8.707 8l2.647-2.646a.5.5 0 0 0-.708-.708L8 7.293 5.354 4.646z"/>
+            </svg>
+         </span>`
+    );
+}
+
+// 폴더 입력창 제거
+function closeFolderInput(folder) {
+    $(folder).prev().remove();
+    $(folder).remove();
+}
+
+// 폴더 생성 요청
+function addFolder() {
+    const folderNames = $('.folderToAdd').toArray().map(input => input.value);
+    try {
+        folderNames.forEach(name => {
+            if (name === '') {
+                alert('올바른 폴더명을 입력해주세요');
+                throw new Error("stop");
+            }
+        });
+    } catch (e) {
+        return;
+    }
+
+    $.ajax({
+        type: "POST",
+        url: `/api/folders`,
+        contentType: "application/json",
+        data: JSON.stringify({folderNames})
+    }).done(function (data, textStatus, xhr) {
+        // 성공(200/201) → 모달 닫고 새로고침
+        $('#container2').removeClass('active');
+        alert('성공적으로 등록되었습니다.');
+        window.location.reload();
+    }).fail(function (xhr) {
+        if (xhr.status === 409) {
+            alert("중복된 폴더입니다.");
+        } else {
+            alert("폴더 생성에 실패했습니다.");
+        }
+    });
+}
+
+// 특정 상품을 폴더에 추가하는 선택 UI 동적 삽입
+function addInputForProductToFolder(productId, buttonEl) {
+    $.ajax({
+        type: 'GET',
+        url: `/api/folders`,
+        success: function (folders) {
+            const options = folders.map(folder => `<option value="${folder.id}">${folder.name}</option>`).join('');
+            const form = `
+                <span>
+                    <form id="folder-select-${productId}" method="post" autocomplete="off" action="/api/products/${productId}/folder">
+                        <select name="folderId" form="folder-select-${productId}">
+                            ${options}
+                        </select>
+                        <input type="submit" value="추가" style="padding:5px; font-size:12px; margin-left:5px;">
+                    </form>
+                </span>`;
+            $(form).insertBefore(buttonEl);
+            $(buttonEl).remove();
+            $(`#folder-select-${productId}`).on('submit', function (e) {
+                e.preventDefault();
+                $.ajax({
+                    type: $(this).prop('method'),
+                    url: $(this).prop('action'),
+                    data: $(this).serialize(),
+                }).done(function (data) {
+                    if (data !== '') {
+                        alert("중복된 폴더입니다.");
+                        return;
+                    }
+                    alert('성공적으로 등록되었습니다.');
+                    window.location.reload();
+                }).fail(function () {
+                    alert("중복된 폴더입니다.");
+                });
+            });
+        },
+        error() {
+            logout();
+        }
+    });
 }

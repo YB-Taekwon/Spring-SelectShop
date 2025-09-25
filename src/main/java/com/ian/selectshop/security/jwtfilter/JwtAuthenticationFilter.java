@@ -76,6 +76,20 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
         // 헤더 전달
         response.addHeader(AUTHORIZATION_HEADER, BEARER_PREFIX + token); // Bearer 접두사 붙여서 반환
         response.addHeader("Access-Control-Expose-Headers", AUTHORIZATION_HEADER); // 브라우저 js가 읽을 수 있도록 설정
+
+        // AJAX 여부 판단
+        boolean isAjax = "XMLHttpRequest".equalsIgnoreCase(request.getHeader("X-Requested-With"));
+
+        if (isAjax) {
+            // XHR: 프런트가 화면 전환
+            response.setStatus(HttpServletResponse.SC_OK);
+            response.setContentType("application/json;charset=UTF-8");
+            response.getWriter().write("{\"ok\":true}");
+            response.getWriter().flush();
+        } else {
+            // 일반 form submit 등: 서버가 직접 리다이렉트
+            response.sendRedirect("/");
+        }
     }
 
     // 로그인 실패
