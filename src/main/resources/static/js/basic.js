@@ -30,7 +30,7 @@ $(document).ready(function () {
             $('#username').text(username);
             if (isAdmin) {
                 $('#admin').text(true);
-                showProduct(true);
+                showProduct(); // 매개변수 제거
             } else {
                 showProduct();
             }
@@ -158,40 +158,48 @@ function addProduct(itemDto) {
     });
 }
 
-function showProduct(isAdmin = false) {
+function showProduct() {
     /**
      * 관심상품 목록: #product-container
      * 검색결과 목록: #search-result-box
      * 관심상품 HTML 만드는 함수: addProductItem
      */
 
-    let dataSource = null;
+        // 정렬/오름차순 파라미터
+    const sorting = $("#sorting option:selected").val();
+    const isAsc = $(':radio[name="isAsc"]:checked').val();
 
-    // admin 계정
-    if (isAdmin) {
-        dataSource = `/api/admin/products`;
-    } else {
-        dataSource = `/api/products`;
-    }
+    const dataSource = `/api/products?sortBy=${sorting}&isAsc=${isAsc}`;
 
-    $.ajax({
-        type: 'GET',
-        url: dataSource,
-        contentType: 'application/json',
-        success: function (response) {
-            $('#product-container').empty();
-            for (let i = 0; i < response.length; i++) {
-                let product = response[i];
-                let tempHtml = addProductItem(product);
-                $('#product-container').append(tempHtml);
+    $('#product-container').empty();
+    $('#search-result-box').empty();
+
+    $('#pagination').pagination({
+        dataSource,
+        locator: 'content',
+        alias: {
+            pageNumber: 'page',
+            pageSize: 'size'
+        },
+        totalNumberLocator: (response) => response.totalElements,
+        pageSize: 10,
+        showPrevious: true,
+        showNext: true,
+        ajax: {
+            error(error) {
+                if (error.status === 403) {
+                    $('html').html(error.responseText);
+                    return;
+                }
+                logout();
             }
         },
-        error(error, status, request) {
-            if (error.status === 403) {
-                $('html').html(error.responseText);
-                return;
+        callback: function (response) {
+            $('#product-container').empty();
+            for (const product of response) {
+                const tempHtml = addProductItem(product);
+                $('#product-container').append(tempHtml);
             }
-            logout();
         }
     });
 }
